@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Roblox Game Store - Demo</title>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --card:#0f1a2b;
+      --accent:#00a3ff;
+      --glass: rgba(255,255,255,0.04);
+      --text:#e6f0ff;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;color:var(--text);background:linear-gradient(180deg,#05060a 0%, #071027 60%);-webkit-font-smoothing:antialiased}
+    header{padding:18px 20px;display:flex;align-items:center;gap:16px}
+    .logo{font-weight:800;font-size:20px;color:var(--accent);letter-spacing:0.6px}
+    .sub{opacity:0.8;font-size:13px}
+
+    main{padding:18px;max-width:1100px;margin:0 auto}
+
+    .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+    .button{background:linear-gradient(90deg,var(--accent),#6be0ff);border:none;padding:8px 12px;border-radius:10px;color:#02111a;font-weight:700;cursor:pointer}
+    .button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text)}
+
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);border-radius:14px;padding:12px;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.03)}
+    .thumb{width:100%;height:140px;border-radius:10px;object-fit:cover;background:linear-gradient(180deg,#08101b,#061426);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.06);font-weight:700}
+    .meta{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
+    .title{font-weight:700;white-space:nowrap;overflow:hidden}
+    .price{font-weight:800}
+
+    /* moving text left-right */
+    .moving{display:inline-block;animation:moveLR 3s ease-in-out infinite alternate;}
+    @keyframes moveLR{from{transform:translateX(-6px)}to{transform:translateX(6px)}}
+
+    /* color-changing text - using hue rotate via filter on a wrapper */
+    .color-cycle{display:inline-block;animation:hue 4s linear infinite}
+    @keyframes hue{0%{filter:hue-rotate(0deg)}50%{filter:hue-rotate(180deg)}100%{filter:hue-rotate(360deg)}}
+
+    .card .actions{display:flex;gap:8px;margin-top:10px}
+    .small{font-size:13px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:var(--glass);cursor:pointer}
+
+    .edit-area{display:none;margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.03)}
+    .edit-area input[type="text"],.edit-area input[type="number"]{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:var(--text)}
+
+    .topbar{display:flex;gap:8px;align-items:center;margin-left:auto}
+
+    footer{padding:18px;text-align:center;color:rgba(255,255,255,0.5);font-size:13px}
+
+    /* responsive tweaks */
+    @media (max-width:520px){.thumb{height:120px}}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">ROBLOX STORE</div>
+    <div class="sub">12 Slots • Editable • Upload to GitHub</div>
+    <div class="topbar">
+      <button id="toggleEdit" class="button ghost">Mode Edit</button>
+      <button id="resetBtn" class="button ghost">Reset</button>
+      <button id="exportBtn" class="button">Export JSON</button>
+      <button id="importBtn" class="button ghost">Import JSON</button>
+      <input id="importFile" type="file" accept="application/json" style="display:none">
+    </div>
+  </header>
+
+  <main>
+    <div class="controls">
+      <div>Tip: klik "Mode Edit" untuk ubah nama, harga dan foto. Perubahan tersimpan otomatis di browser.</div>
+    </div>
+
+    <section class="grid" id="grid"></section>
+  </main>
+
+  <footer>File ini: <strong>index.html</strong> — Upload langsung ke repo GitHub (buat repo baru, tambahkan file ini, commit & push).</footer>
+
+  <script>
+    // ====== Data and defaults ======
+    const defaultItems = Array.from({length:12}, (_,i)=>({
+      id:i+1,
+      name:`Item #${i+1}`,
+      price: ( (i+1)*10 ) + '.00',
+      // small placeholder gradient data URL for product - generated dynamically
+      image: null
+    }));
+
+    const LS_KEY = 'rbx_store_v1';
+    let items = loadItems();
+    let editMode = false;
+
+    // ====== Utilities ======
+    function rgbToDataURL(i){
+      // simple SVG placeholder with number
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='800' height='450'><defs><linearGradient id='g' x1='0' x2='1'><stop offset='0' stop-color='#0aa' /><stop offset='1' stop-color='#05a' /></linearGradient></defs><rect width='100%' height='100%' fill='url(#g)' /><text x='50%' y='52%' dominant-baseline='middle' text-anchor='middle' font-family='Segoe UI, Roboto, Arial' font-size='48' fill='rgba(255,255,255,0.9)'>${i}</text></svg>`;
+      return 'data:image/svg+xml;utf8,'+encodeURIComponent(svg);
+    }
+
+    function saveItems(){
+      localStorage.setItem(LS_KEY, JSON.stringify(items));
+    }
+    function loadItems(){
+      try{
+        const raw = localStorage.getItem(LS_KEY);
+        if(raw) return JSON.parse(raw);
+      }catch(e){console.warn(e)}
+      // build defaults with placeholder images
+      return defaultItems.map(it=>({...it, image: rgbToDataURL(it.name)}));
+    }
+
+    // ====== Build UI ======
+    const grid = document.getElementById('grid');
+
+    function render(){
+      grid.innerHTML = '';
+      items.forEach((it,idx)=>{
+        const card = document.createElement('div');card.className='card';
+        card.innerHTML = `
+          <div class="thumb"><img src="${it.image}" alt="${it.name}" style="width:100%;height:100%;border-radius:10px;object-fit:cover"></div>
+          <div class="meta">
+            <div style="min-width:0">
+              <div class="title"><span class="moving color-cycle" data-id="name-${idx}">${escapeHtml(it.name)}</span></div>
+              <div style="margin-top:6px;font-size:14px;color:rgba(255,255,255,0.7)"><span class="moving color-cycle" data-id="price-${idx}\">$${escapeHtml(it.price)}</span></div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:11px;opacity:0.7">Slot ${it.id}</div>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="small editBtn">Edit</button>
+            <button class="small downloadBtn">Download Img</button>
+          </div>
+          <div class="edit-area" data-id="edit-${idx}">
+            <label>Nama:</label>
+            <input type="text" data-field="name" value="${escapeHtml(it.name)}">
+            <label style="margin-top:8px">Harga (tanpa $):</label>
+            <input type="number" step="0.01" data-field="price" value="${Number(it.price)}">
+            <label style="margin-top:8px">Foto (unggah):</label>
+            <input type="file" accept="image/*" data-field="image">
+            <div style="margin-top:8px;display:flex;gap:8px">
+              <button class="small saveLocal">Simpan</button>
+              <button class="small cancelLocal">Batal</button>
+            </div>
+          </div>
+        `;
+        // attach
+        grid.appendChild(card);
+
+        // wire actions
+        const editArea = card.querySelector('.edit-area');
+        const editBtn = card.querySelector('.editBtn');
+        const saveBtn = card.querySelector('.saveLocal');
+        const cancelBtn = card.querySelector('.cancelLocal');
+        const fileInput = card.querySelector('input[type=file]');
+        const nameInput = card.querySelector('input[data-field="name"]');
+        const priceInput = card.querySelector('input[data-field="price"]');
+        const downloadBtn = card.querySelector('.downloadBtn');
+
+        editBtn.addEventListener('click', ()=>{
+          if(!editMode){ toggleEditMode(true); }
+          // toggle this edit area
+          editArea.style.display = (editArea.style.display==='block')? 'none' : 'block';
+        });
+        cancelBtn.addEventListener('click', ()=>{ editArea.style.display='none'; render(); });
+        saveBtn.addEventListener('click', ()=>{
+          it.name = nameInput.value || it.name;
+          it.price = parseFloat(priceInput.value).toFixed(2) || it.price;
+          if(fileInput.files && fileInput.files[0]){
+            const f = fileInput.files[0];
+            const reader = new FileReader();
+            reader.onload = e=>{ it.image = e.target.result; saveItems(); render(); }
+            reader.readAsDataURL(f);
+          }else{ saveItems(); render(); }
+        });
+
+        fileInput.addEventListener('change', (e)=>{
+          // preview immediately (not yet saved) — optional: but we will set image on save only
+        });
+
+        downloadBtn.addEventListener('click', ()=>{
+          const a = document.createElement('a');a.href=it.image;a.download = `item-${it.id}.png`;document.body.appendChild(a);a.click();a.remove();
+        });
+      });
+
+      // after rendering, attach global behaviors (color-cycle randomization)
+      // we'll also make colors change slightly per element via CSS variables — but color-cycle handles hue rotate
+
+    }
+
+    // escape helper
+    function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'); }
+
+    // toggle edit mode
+    document.getElementById('toggleEdit').addEventListener('click', ()=>{ toggleEditMode(); });
+    function toggleEditMode(force){
+      const ADMIN_PASS = 'admin123'; // ganti password di sini
+      if(!editMode && (typeof force !== 'boolean' || force === true)){
+        const p = prompt('Masukkan password admin:');
+        if(p !== ADMIN_PASS){ alert('Password salah'); return; }
+      }
+      editMode = (typeof force==='boolean')? force : !editMode;
+      document.getElementById('toggleEdit').textContent = editMode? 'Selesai Edit':'Mode Edit';
+      document.querySelectorAll('.edit-area').forEach(el=>el.style.display = editMode? 'block':'none');
+      if(!editMode) saveItems();
+    });
+
+    // Export / Import JSON
+    document.getElementById('exportBtn').addEventListener('click', ()=>{
+      const blob = new Blob([JSON.stringify(items, null, 2)], {type:'application/json'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'rbx_store_items.json'; document.body.appendChild(a); a.click(); a.remove();
+    });
+    document.getElementById('importBtn').addEventListener('click', ()=>{ document.getElementById('importFile').click(); });
+    document.getElementById('importFile').addEventListener('change', (e)=>{
+      const f = e.target.files[0]; if(!f) return;
+      const r = new FileReader(); r.onload = ev=>{
+        try{ const parsed = JSON.parse(ev.target.result); if(Array.isArray(parsed) && parsed.length>0){ items = parsed; saveItems(); render(); alert('Impor berhasil'); } else alert('File JSON tidak valid'); }
+        catch(err){ alert('Gagal membaca file: '+err.message) }
+      }; r.readAsText(f);
+    });
+
+    // initial render
+    render();
+
+    // Save periodically (just in case)
+    setInterval(()=>saveItems(), 5000);
+
+    // Accessibility: keyboard shortcuts
+    window.addEventListener('keydown', (e)=>{
+      if(e.ctrlKey && e.key.toLowerCase()==='e'){ e.preventDefault(); toggleEditMode(); }
+      if(e.ctrlKey && e.key.toLowerCase()==='s'){ e.preventDefault(); saveItems(); alert('Tersimpan'); }
+    });
+
+    // end of script
+  </script>
+</body>
+</html>
